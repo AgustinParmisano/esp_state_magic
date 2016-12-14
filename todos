@@ -1,2 +1,3 @@
-Que una vez conectado a la red envíe el estado de sus pines cada X segundos (variable que va a estar en el eeprom) al servidor (url)
-Para esto hay que sensar los pines
+-Que una vez conectado a la red envíe el estado de sus pines cada X segundos (variable que va a estar en el eeprom) al servidor (url)
+-Para esto hay que sensar los pines
+-Hay que ver como hacer para no tener que tocar el botón de reset para que se conecte al ssid
