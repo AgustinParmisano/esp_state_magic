@@ -42,6 +42,8 @@ Based on & All Thanks to
 https://gist.github.com/dogrocker/f998dde4dbac923c47c1
 
 Modified by
----
+----
+
+```Agustin Parmisano @AgustinParmisano UNLP Argentina```
 
 **Free Software, Hell Yeah!**
