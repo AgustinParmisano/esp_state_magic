@@ -4,7 +4,7 @@
 
 ![esp8266](https://tuts.codingo.me/wp-content/uploads/2016/05/ESP-12.jpg)
 
-This repository serves the code used to make every device based on ESP8266 abble to work standalone and be configured in order to connect a selected network based on States:
+This repository serves the code used to make every device based on [ESP8266](https://en.wikipedia.org/wiki/ESP8266) abble to work standalone and be configured in order to connect a selected network based on States:
   - State 1: AP Configuration Mode: The device goes AP mode and serves a web form so the user can configure the SSID, PASS & URL for the further ESP8266 connection, send data and command retrieval.
   - State 2: Client Mode: The device now configured and connected to specified network enters Client Mode and starts to send to the configured URL the states of its [GPIO](https://en.wikipedia.org/wiki/General-purpose_input/output) (General Purpose Input/Output) every X seconds, also configurable.
   
