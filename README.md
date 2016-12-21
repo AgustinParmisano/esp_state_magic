@@ -46,4 +46,4 @@ Modified by
 
 ```Agustin Parmisano @AgustinParmisano UNLP Argentina```
 
-**Free Software, Hell Yeah!**
+**Free Software, Free Knowledge**
