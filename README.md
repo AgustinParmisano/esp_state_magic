@@ -6,7 +6,7 @@
 
 This repository serves the code used to make every device based on ESP8266 abble to work standalone and be configured in order to connect a selected network based on States:
   - State 1: AP Configuration Mode: The device goes AP mode and serves a web form so the user can configure the SSID, PASS & URL for the further ESP8266 connection, send data and command retrieval.
-  - State 2: Client Mode: The device now configured and connected to specified network enters Client Mode and starts to send to the configured URL the states of its PINS every X secods, also configurable.
+  - State 2: Client Mode: The device now configured and connected to specified network enters Client Mode and starts to send to the configured URL the states of its [GPIO](https://en.wikipedia.org/wiki/General-purpose_input/output) (General Purpose Input/Output) every X seconds, also configurable.
   
 
 You can also:
@@ -21,7 +21,7 @@ More details coming soon.
 
 ### Todos
 
- - Send each PIN state or data to configured URL (Server).
+ - Send GPIO state or data to configured URL (Server).
  - Refactoring of code and Comments.
  - Explain in this sections every function and its purposse.
  - Make examples with specific Arduino Like Sensors (DHT11 f.e.)
