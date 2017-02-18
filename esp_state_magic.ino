@@ -216,21 +216,32 @@ void createWebServer(int webtype)
     /*NEW*/
     server.on("/send", []() {
       Serial.print("Sending data to server ...");
-      const uint16_t port = 80;
-      const char * host = "192.168.0.18";
+      const uint16_t port = 5000;
+      const char * host = "192.168.0.4";
       int tries = 0;
 
       WiFiClient client; // Use WiFI Client to create TCP connections
 
-      while (!client.connect(host, port) || (tries == 5)) {
+      while (!client.connect(host, port)) {
           Serial.println("connection failed");
           Serial.println("wait 5 sec... Tries: " + tries);
           delay(5000);
           tries = tries + 1;
+          if (tries > 2){
+              Serial.println("Sending state FAILED, exiting sending state");
+              return;
+          }
       }
 
-      // This will send the request to the server
-      client.print("Send this data to server");
+      String data = "hola como estas";
+
+      client.print(String("POST ") + host + " HTTP/1.1\r\n" +
+                 "Host: " + WiFi.localIP() + "\r\n" +
+                 //"Connection: close\r\n" +
+                 "Content-Type: text/html; charset=utf-8\r\n" +
+                 "Content-Length: " + data.length() + "\r\n" +
+                 "\r\n" + // This is the extra CR+LF pair to signify the start of a body
+                 data + "\n");
 
       //read back one line from server
       String line = client.readStringUntil('\r');
@@ -240,6 +251,7 @@ void createWebServer(int webtype)
       client.stop();
 
       delay(5000);
+      return;
       /*END NEW*/
     });
 
