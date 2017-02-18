@@ -125,7 +125,7 @@ void setupAP(void) {
   delay(100);
   WiFi.softAP(ssid, password, 6);
   Serial.println("softap");
-  
+
   IPAddress ip = WiFi.softAPIP();
   String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
   launchWeb(1);
@@ -212,6 +212,37 @@ void createWebServer(int webtype)
     });
   } else if (webtype == 0) {
     Serial.println("CONNECTED TO NETWORK");
+
+    /*NEW*/
+    server.on("/send", []() {
+      Serial.print("Sending data to server ...");
+      const uint16_t port = 80;
+      const char * host = "192.168.0.18";
+      int tries = 0;
+
+      WiFiClient client; // Use WiFI Client to create TCP connections
+
+      while (!client.connect(host, port) || (tries == 5)) {
+          Serial.println("connection failed");
+          Serial.println("wait 5 sec... Tries: " + tries);
+          delay(5000);
+          tries = tries + 1;
+      }
+
+      // This will send the request to the server
+      client.print("Send this data to server");
+
+      //read back one line from server
+      String line = client.readStringUntil('\r');
+      client.println(line);
+
+      Serial.println("closing connection");
+      client.stop();
+
+      delay(5000);
+      /*END NEW*/
+    });
+
     server.on("/", []() {
       IPAddress ip = WiFi.localIP();
       String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
