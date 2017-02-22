@@ -11,6 +11,9 @@ String content;
 int statusCode;
 int auxwebtype;
 
+String qurl;
+String equrl;
+
 void setup() {
   Serial.begin(115200);
   EEPROM.begin(512);
@@ -35,6 +38,13 @@ void setup() {
   }
   Serial.print("PASS: ");
   Serial.println(epass);
+  equrl = "";
+  for (int i = 64; i < 128; ++i)
+  {
+    equrl += char(EEPROM.read(i));
+  }
+  Serial.print("URL: ");
+  Serial.println(equrl);
   if ( esid.length() > 1 ) {
     WiFi.begin(esid.c_str(), epass.c_str());
     if (testWifi()) {
@@ -70,12 +80,12 @@ void launchWeb(int webtype) {
   Serial.println(WiFi.softAPIP());
   IPAddress ip = WiFi.softAPIP();
   String apip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
-  if(apip == "0.0.0.0"){
+  if (apip == "0.0.0.0") {
     Serial.println("La IP del AP es 0.0.0.0 entonces tengo que mostrar la web principal");
     createWebServer(0);
-  }else{
-     Serial.println("La IP del AP NO es 0.0.0.0 entonces tengo que mostrar la web de configuración");
-     createWebServer(1);
+  } else {
+    Serial.println("La IP del AP NO es 0.0.0.0 entonces tengo que mostrar la web de configuración");
+    createWebServer(1);
   }
   //createWebServer(webtype);
   // Start the server
@@ -137,35 +147,37 @@ void createWebServer(int webtype)
   Serial.println("If Webtype is 1 Configure SSID & PASS if is 0 show local IP: Webtype is:");
   Serial.println(webtype);
   auxwebtype = webtype;
+  delay(5000);
   if ( webtype == 1 ) {
     Serial.println("CONFIGURING SSID CONNECTION");
     server.on("/", []() {
       if ( auxwebtype == 1 ) {
-            IPAddress ip = WiFi.softAPIP();
-            String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
-            content = "<!DOCTYPE HTML>\r\n<html>Hello from ESP8266 at ";
-            content += ipStr;
-            content += "<p>";
-            content += st;
-            content += "</p><form method='get' action='setting'><label>SSID: </label><input name='ssid' length=32><label>PASS: </label><input name='pass' length=64><label>SERVER URL: </label><input name='url' length=64><input type='submit'></form>";
-            content += "</html>";
-            Serial.println("Sending configuration data");
-            server.send(200, "text/html", content);
-            content = "";
-      }else if( auxwebtype == 0 ){
-            IPAddress ip = WiFi.localIP();
-            String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
-            server.send(200, "text/html", "Second Stage {\"IP\":\"" + ipStr + "\"}");
+        Serial.println("CONFIGURING SSID CONNECTION STARTING");
+        IPAddress ip = WiFi.softAPIP();
+        String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+        content = "<!DOCTYPE HTML>\r\n<html>Hello from ESP8266 at ";
+        content += ipStr;
+        content += "<p>";
+        content += st;
+        content += "</p><form method='get' action='setting'><label>SSID: </label><input name='ssid' length=32><label>PASS: </label><input name='pass' length=64><label>SERVER URL: </label><input name='url' length=64><input type='submit'></form>";
+        content += "</html>";
+        Serial.println("Sending configuration data");
+        server.send(200, "text/html", content);
+        content = "";
+      } else if ( auxwebtype == 0 ) {
+        IPAddress ip = WiFi.localIP();
+        String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+        server.send(200, "text/html", "Second Stage {\"IP\":\"" + ipStr + "\"}");
       }
     });
     server.on("/setting", []() {
       String qsid = server.arg("ssid");
       String qpass = server.arg("pass");
-      String qurl = server.arg("url");
+      qurl = server.arg("url");
 
       if (qsid.length() > 0 && qpass.length() > 0 && qurl.length() > 0) {
         Serial.println("clearing eeprom");
-        for (int i = 0; i < 96; ++i) {
+        for (int i = 0; i < 128; ++i) {
           EEPROM.write(i, 0);
         }
         Serial.println(qsid);
@@ -215,43 +227,67 @@ void createWebServer(int webtype)
 
     /*NEW*/
     server.on("/send", []() {
-      Serial.print("Sending data to server ...");
-      const uint16_t port = 5000;
-      const char * host = "192.168.0.4";
-      int tries = 0;
+      Serial.println("Sending data to server ...");
+      const uint16_t port = 80;
+      char host[80];
+      equrl.toCharArray(host, port);
+      String apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
+      String PostData = "8";
 
       WiFiClient client; // Use WiFI Client to create TCP connections
 
-      while (!client.connect(host, port)) {
-          Serial.println("connection failed");
-          Serial.println("wait 5 sec... Tries: " + tries);
-          delay(5000);
-          tries = tries + 1;
-          if (tries > 2){
-              Serial.println("Sending state FAILED, exiting sending state");
-              return;
-          }
+      Serial.print("Connecting to server host: ");
+      Serial.println(host);
+
+
+      if (!client.connect(host, port)) {
+        Serial.println("connection failed");
       }
 
-      String data = "hola como estas";
 
-      client.print(String("POST ") + host + " HTTP/1.1\r\n" +
-                 "Host: " + WiFi.localIP() + "\r\n" +
-                 //"Connection: close\r\n" +
-                 "Content-Type: text/html; charset=utf-8\r\n" +
-                 "Content-Length: " + data.length() + "\r\n" +
-                 "\r\n" + // This is the extra CR+LF pair to signify the start of a body
-                 data + "\n");
 
-      //read back one line from server
-      String line = client.readStringUntil('\r');
-      client.println(line);
+      if (client.connect(host, port)) {
 
-      Serial.println("closing connection");
-      client.stop();
+        delay(5000);
 
-      delay(5000);
-      return;
+        Serial.println("Sending data: " + PostData);
+
+        client.println("POST " + apiurl + PostData + " HTTP/1.1");
+        client.println("Host: jsonplaceholder.typicode.com");
+        client.println("Cache-Control: no-cache");
+        client.println("Content-Type: application/x-www-form-urlencoded");
+        client.print("Content-Length: ");
+        client.println(PostData.length());
+        client.println();
+        client.println();
+
+        long interval = 2000;
+        unsigned long currentMillis = millis(), previousMillis = millis();
+
+        while (!client.available()) {
+
+          if ( (currentMillis - previousMillis) > interval ) {
+
+            Serial.println("Timeout");
+            Serial.println("closing connection");
+            client.stop();
+            return;
+          }
+          currentMillis = millis();
+        }
+
+        Serial.println("Server response: ");
+        while (client.connected())
+        {
+          if ( client.available() )
+          {
+            char str = client.read();
+            Serial.print(str);
+          }
+        }
+        Serial.println(" ");
+
+      }
       /*END NEW*/
     });
 
@@ -265,7 +301,7 @@ void createWebServer(int webtype)
       content += "<p>Clearing the EEPROM</p></html>";
       server.send(200, "text/html", content);
       Serial.println("clearing eeprom");
-      for (int i = 0; i < 96; ++i) {
+      for (int i = 0; i < 128; ++i) {
         EEPROM.write(i, 0);
       }
       EEPROM.commit();
