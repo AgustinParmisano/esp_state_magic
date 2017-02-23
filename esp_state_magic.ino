@@ -1,6 +1,15 @@
+#include <DHT.h>
+
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
+
+#define DHTPIN 5
+
+#define DHTTYPE DHT11   // DHT 11
+
+DHT dht(DHTPIN, DHTTYPE);
+
 
 ESP8266WebServer server(80);
 
@@ -17,17 +26,28 @@ String qsid;
 String equrl;
 String esid;
 
+String apiurl;
+
+// Temporary variables
+static char celsiusTemp[7];
+static char humidityTemp[7];
+
+
 void setup() {
   Serial.begin(115200);
+
   EEPROM.begin(512);
   delay(10);
+
+  dht.begin();
+
   Serial.println();
   Serial.println();
   Serial.println("Startup");
 
   // read eeprom for ssid and pass
   Serial.println("Reading EEPROM ssid");
-  esid;
+  esid = "";
   for (int i = 0; i < 32; ++i)
   {
     esid += char(EEPROM.read(i));
@@ -89,13 +109,14 @@ void launchWeb(int webtype) {
   Serial.println(WiFi.localIP());
   Serial.print("SoftAP IP: ");
   Serial.println(WiFi.softAPIP());
-  IPAddress ip = WiFi.softAPIP();
-  String apip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
-  if (apip == "0.0.0.0") {
-    Serial.println("SoftAP IP is 0.0.0.0 so show main page: web mode 0 (connecting to configured SSID AP and start web server)");
+  IPAddress ip = WiFi.localIP();
+  String localip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+  if (localip != "0.0.0.0") {
+    Serial.println("Local IP is NOT 0.0.0.0 so show main page: web mode 0 (connecting to configured SSID AP and start web server)");
     createWebServer(0);
   } else {
-    Serial.println("SoftAP IP is NOT 0.0.0.0 so show SSID, PASS & URL configuration web: web mode 1");
+    Serial.println("Local IP is 0.0.0.0 so show SSID, PASS & URL configuration web: web mode 1");
+    func_cleareeprom();
     createWebServer(1);
   }
 
@@ -227,7 +248,7 @@ void createWebServer(int webtype)
         Serial.println("stoping AP mode . . .");
         WiFi.mode(WIFI_STA);
         Serial.println("AP mode Stopped");
-        setup(); //hay que hacer que no se tenga que resetear con el botón.
+        setup();
       } else {
         content = "{\"Error\":\"404 not found\"}";
         statusCode = 404;
@@ -236,6 +257,10 @@ void createWebServer(int webtype)
       server.send(statusCode, "application/json", content);
     });
   } else if (webtype == 0) {
+
+    Serial.println("stoping AP mode . . .");
+    WiFi.mode(WIFI_STA);
+    Serial.println("AP mode Stopped");
 
     char connected_ssid[80];
     esid.toCharArray(connected_ssid, 80);
@@ -299,8 +324,7 @@ void func_post_data() {
       const uint16_t port = 80;
       char host[80];
       equrl.toCharArray(host, port);
-      String apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
-      String PostData = "8";
+      apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
 
       WiFiClient client; // Use WiFI Client to create TCP connections
 
@@ -318,7 +342,56 @@ void func_post_data() {
 
         delay(5000);
 
+        //retrieving data from GPIOs to send
+
+        /*// Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
+        float h = dht.readHumidity();
+        // Read temperature as Celsius (the default)
+        float t = dht.readTemperature();
+        // Check if any reads failed and exit early (to try again).
+        if (isnan(h) || isnan(t)) {
+          Serial.println("Failed to read from DHT sensor!");
+          strcpy(celsiusTemp,"Failed");
+          strcpy(humidityTemp, "Failed");
+        }
+        else{
+          // Computes temperature values in Celsius and Humidity
+          float hic = dht.computeHeatIndex(t, h, false);
+          dtostrf(hic, 6, 2, celsiusTemp);
+          dtostrf(h, 6, 2, humidityTemp);
+          // You can delete the following Serial.print's, it's just for debugging purposes
+          Serial.print("Humidity: ");
+          Serial.print(h);
+          Serial.print(" %\t Temperature: ");
+          Serial.print(t);
+          Serial.print(" *C ");
+          Serial.print(hic);
+          Serial.print(" *C ");
+          Serial.print("Humidity: ");
+          Serial.print(h);
+          Serial.print(" %\t Temperature: ");
+          Serial.print(t);
+          Serial.print(" *C ");
+          Serial.print("Heat index: ");
+          Serial.print(hic);
+          Serial.print(" *C ");
+        }*/
+
+        // read the input on analog pin 0:
+        int sensorValue = analogRead(A0);
+        // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V):
+        int voltage = sensorValue * (5.0 / 1023.0);
+        //voltage = (int) voltage * 1000;
+        //voltage = voltage / 100;
+        // print out the value you read:
+        Serial.print("LDR: ");
+        Serial.println(voltage);
+
+        String PostData = String(voltage);
+
         Serial.println("Sending data: " + PostData);
+        Serial.println("API URL: " + apiurl);
+
 
         client.println("POST " + apiurl + PostData + " HTTP/1.1");
         client.println("Host: jsonplaceholder.typicode.com");
@@ -357,6 +430,23 @@ void func_post_data() {
 
       }
 
+}
+
+void func_configuration_mode() {
+      Serial.println("CONFIGURING SSID CONNECTION");
+      Serial.println("CONFIGURING SSID CONNECTION STARTING");
+      IPAddress ip = WiFi.softAPIP();
+      String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+      content = "<!DOCTYPE HTML>\r\n<html>Hello from ESP8266 at ";
+      content += ipStr;
+      content += "<p>";
+      content += st;
+      content += "</p><form method='get' action='setting'><label>SSID: </label><input name='ssid' length=32><label>PASS: </label><input name='pass' length=64><label>SERVER URL: </label><input name='url' length=64><input type='submit'></form>";
+      content += "</html>";
+      Serial.println("Sending configuration data");
+      server.send(200, "text/html", content);
+      content = "";
+      return;
 }
 
 void loop() {
