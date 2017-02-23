@@ -12,7 +12,10 @@ int statusCode;
 int auxwebtype;
 
 String qurl;
+String qsid;
+
 String equrl;
+String esid;
 
 void setup() {
   Serial.begin(115200);
@@ -21,15 +24,17 @@ void setup() {
   Serial.println();
   Serial.println();
   Serial.println("Startup");
+
   // read eeprom for ssid and pass
   Serial.println("Reading EEPROM ssid");
-  String esid;
+  esid;
   for (int i = 0; i < 32; ++i)
   {
     esid += char(EEPROM.read(i));
   }
   Serial.print("SSID: ");
   Serial.println(esid);
+
   Serial.println("Reading EEPROM pass");
   String epass = "";
   for (int i = 32; i < 64; ++i)
@@ -38,6 +43,8 @@ void setup() {
   }
   Serial.print("PASS: ");
   Serial.println(epass);
+
+  Serial.println("Reading EEPROM Server URL");
   equrl = "";
   for (int i = 64; i < 128; ++i)
   {
@@ -45,6 +52,8 @@ void setup() {
   }
   Serial.print("URL: ");
   Serial.println(equrl);
+
+  // If SSID is set then start web mode 0 (web server mode)
   if ( esid.length() > 1 ) {
     WiFi.begin(esid.c_str(), epass.c_str());
     if (testWifi()) {
@@ -52,9 +61,11 @@ void setup() {
       return;
     }
   }
+  //If not connects to AP set up its own, start web mode 1
   setupAP();
 }
 
+//test wifi to connect configured SSID AP
 bool testWifi(void) {
   int c = 0;
   Serial.println("Waiting for Wifi to connect");
@@ -81,18 +92,19 @@ void launchWeb(int webtype) {
   IPAddress ip = WiFi.softAPIP();
   String apip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
   if (apip == "0.0.0.0") {
-    Serial.println("La IP del AP es 0.0.0.0 entonces tengo que mostrar la web principal");
+    Serial.println("SoftAP IP is 0.0.0.0 so show main page: web mode 0 (connecting to configured SSID AP and start web server)");
     createWebServer(0);
   } else {
-    Serial.println("La IP del AP NO es 0.0.0.0 entonces tengo que mostrar la web de configuración");
+    Serial.println("SoftAP IP is NOT 0.0.0.0 so show SSID, PASS & URL configuration web: web mode 1");
     createWebServer(1);
   }
-  //createWebServer(webtype);
+
   // Start the server
   server.begin();
   Serial.println("Server started");
 }
 
+//function to start AP mode
 void setupAP(void) {
   WiFi.mode(WIFI_STA);
   WiFi.disconnect();
@@ -142,6 +154,7 @@ void setupAP(void) {
   Serial.println("over");
 }
 
+//function to create web server
 void createWebServer(int webtype)
 {
   Serial.println("If Webtype is 1 Configure SSID & PASS if is 0 show local IP: Webtype is:");
@@ -171,7 +184,7 @@ void createWebServer(int webtype)
       }
     });
     server.on("/setting", []() {
-      String qsid = server.arg("ssid");
+      qsid = server.arg("ssid");
       String qpass = server.arg("pass");
       qurl = server.arg("url");
 
@@ -223,10 +236,65 @@ void createWebServer(int webtype)
       server.send(statusCode, "application/json", content);
     });
   } else if (webtype == 0) {
-    Serial.println("CONNECTED TO NETWORK");
 
-    /*NEW*/
+    char connected_ssid[80];
+    esid.toCharArray(connected_ssid, 80);
+
+    Serial.println("CONNECTED TO SSID: ");
+    Serial.println(connected_ssid);
+
+    server.on("/", []() {
+      IPAddress ip = WiFi.localIP();
+      String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+      server.send(200, "text/html", "{\"IP\":\"" + ipStr + "\"}");
+    });
+
     server.on("/send", []() {
+
+      func_post_data();
+
+    });
+
+    server.on("/cleareeprom", []() {
+
+       func_cleareeprom();
+
+    });
+    server.on("/disconnect", []() {
+
+      func_disconnect();
+
+    });
+  }
+}
+
+void func_disconnect() {
+      //Disconnect from configured SSID AP and setup owns AP again web mode 1
+      content = "<!DOCTYPE HTML>\r\n<html>";
+      content += "<p>Disconecting</p></html>";
+      server.send(200, "text/html", content);
+      Serial.println("disconecting . . .");
+      WiFi.disconnect();
+      Serial.println("Disconected");
+      //setup owns AP again web mode 1
+      setupAP();
+}
+
+void func_cleareeprom() {
+      //Clear EEPROM to restart ESP default values
+      content = "<!DOCTYPE HTML>\r\n<html>";
+      content += "<p>Clearing the EEPROM</p></html>";
+      server.send(200, "text/html", content);
+      Serial.println("clearing eeprom");
+      for (int i = 0; i < 128; ++i) {
+        EEPROM.write(i, 0);
+      }
+      EEPROM.commit();
+      Serial.println("eeprom cleared...");
+}
+
+void func_post_data() {
+      //Start sending data to configured server
       Serial.println("Sending data to server ...");
       const uint16_t port = 80;
       char host[80];
@@ -246,7 +314,7 @@ void createWebServer(int webtype)
 
 
 
-      if (client.connect(host, port)) {
+      while (client.connect(host, port)) {
 
         delay(5000);
 
@@ -288,35 +356,7 @@ void createWebServer(int webtype)
         Serial.println(" ");
 
       }
-      /*END NEW*/
-    });
 
-    server.on("/", []() {
-      IPAddress ip = WiFi.localIP();
-      String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
-      server.send(200, "text/html", "{\"IP\":\"" + ipStr + "\"}");
-    });
-    server.on("/cleareeprom", []() {
-      content = "<!DOCTYPE HTML>\r\n<html>";
-      content += "<p>Clearing the EEPROM</p></html>";
-      server.send(200, "text/html", content);
-      Serial.println("clearing eeprom");
-      for (int i = 0; i < 128; ++i) {
-        EEPROM.write(i, 0);
-      }
-      EEPROM.commit();
-      Serial.println("eeprom cleared...");
-    });
-    server.on("/disconnect", []() {
-      content = "<!DOCTYPE HTML>\r\n<html>";
-      content += "<p>Disconecting</p></html>";
-      server.send(200, "text/html", content);
-      Serial.println("disconecting . . .");
-      WiFi.disconnect();
-      Serial.println("Disconected");
-      setupAP();
-    });
-  }
 }
 
 void loop() {
