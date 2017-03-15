@@ -324,8 +324,9 @@ void func_post_data() {
       const uint16_t port = 80;
       char host[80];
       equrl.toCharArray(host, port);
-      apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
-
+      //apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
+      apiurl = "/api/v1/sendata?value=";
+  
       WiFiClient client; // Use WiFI Client to create TCP connections
 
       Serial.print("Connecting to server host: ");
@@ -392,8 +393,8 @@ void func_post_data() {
         Serial.println("Sending data: " + PostData);
         Serial.println("API URL: " + apiurl);
 
-
-        client.println("POST " + apiurl + PostData + " HTTP/1.1");
+        //client.println("POST " + apiurl + PostData + " HTTP/1.1");
+        client.println("GET " + apiurl + PostData + " HTTP/1.1");
         client.println("Host: jsonplaceholder.typicode.com");
         client.println("Cache-Control: no-cache");
         client.println("Content-Type: application/x-www-form-urlencoded");
