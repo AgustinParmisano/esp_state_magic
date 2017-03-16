@@ -1,0 +1,28 @@
+require 'bundler'
+require 'json'
+Bundler.require
+
+elektron_ip =  0
+elektron_time = 0
+elektron_name = 0
+elektron_data = 0
+
+get '/' do
+   redirect to("/elektron")
+end
+
+get '/elektron' do
+  "Elektron" + "\nIP is " + elektron_ip.to_s + "\nTime is " + elektron_time.to_s + "\nName is " + elektron_name.to_s + "\nData is " + elektron_data.to_s
+end
+
+post '/elektronsends' do
+  request.body.rewind
+  data = JSON.parse request.body.read
+
+  elektron_ip = data['ip']
+  elektron_time = data['time']
+  elektron_name = data['name']
+  elektron_data = data['data']
+
+  "Hello #{data['name']}!"
+end
