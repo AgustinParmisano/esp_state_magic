@@ -28,6 +28,11 @@ String esid;
 
 String apiurl;
 
+String localip = "elektronip";
+String elektronname = "Elektron";
+String currtime = "elektrontime";
+String data = "elektrondata";
+
 // Temporary variables
 static char celsiusTemp[7];
 static char humidityTemp[7];
@@ -35,26 +40,26 @@ static char humidityTemp[7];
 
 void setup() {
   Serial.begin(115200);
-
+  
   EEPROM.begin(512);
   delay(10);
 
   dht.begin();
-
+  
   Serial.println();
   Serial.println();
   Serial.println("Startup");
-
+  
   // read eeprom for ssid and pass
   Serial.println("Reading EEPROM ssid");
   esid = "";
   for (int i = 0; i < 32; ++i)
   {
     esid += char(EEPROM.read(i));
-  }
+  } 
   Serial.print("SSID: ");
   Serial.println(esid);
-
+  
   Serial.println("Reading EEPROM pass");
   String epass = "";
   for (int i = 32; i < 64; ++i)
@@ -71,8 +76,8 @@ void setup() {
     equrl += char(EEPROM.read(i));
   }
   Serial.print("URL: ");
-  Serial.println(equrl);
-
+  Serial.println(equrl);  
+  
   // If SSID is set then start web mode 0 (web server mode)
   if ( esid.length() > 1 ) {
     WiFi.begin(esid.c_str(), epass.c_str());
@@ -81,7 +86,7 @@ void setup() {
       return;
     }
   }
-  //If not connects to AP set up its own, start web mode 1
+  //If not connects to AP set up its own, start web mode 1 
   setupAP();
 }
 
@@ -110,7 +115,7 @@ void launchWeb(int webtype) {
   Serial.print("SoftAP IP: ");
   Serial.println(WiFi.softAPIP());
   IPAddress ip = WiFi.localIP();
-  String localip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+  localip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
   if (localip != "0.0.0.0") {
     Serial.println("Local IP is NOT 0.0.0.0 so show main page: web mode 0 (connecting to configured SSID AP and start web server)");
     createWebServer(0);
@@ -264,7 +269,7 @@ void createWebServer(int webtype)
 
     char connected_ssid[80];
     esid.toCharArray(connected_ssid, 80);
-
+    
     Serial.println("CONNECTED TO SSID: ");
     Serial.println(connected_ssid);
 
@@ -277,13 +282,13 @@ void createWebServer(int webtype)
     server.on("/send", []() {
 
       func_post_data();
-
+  
     });
-
+    
     server.on("/cleareeprom", []() {
-
+      
        func_cleareeprom();
-
+       
     });
     server.on("/disconnect", []() {
 
@@ -321,23 +326,23 @@ void func_cleareeprom() {
 void func_post_data() {
       //Start sending data to configured server
       Serial.println("Sending data to server ...");
-      const uint16_t port = 80;
-      char host[80];
+      const uint16_t port = 9292; //sinatra app port
+      char host[90];
       equrl.toCharArray(host, port);
-      //apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
-      apiurl = "/api/v1/sendata?value=";
-  
+      //apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id="; //simfony 2 rest app url
+      apiurl = "/elektronsends"; //sinatra app url
+      
       WiFiClient client; // Use WiFI Client to create TCP connections
 
       Serial.print("Connecting to server host: ");
       Serial.println(host);
-
+      
 
       if (!client.connect(host, port)) {
         Serial.println("connection failed");
       }
 
-
+      
 
       while (client.connect(host, port)) {
 
@@ -345,63 +350,31 @@ void func_post_data() {
 
         //retrieving data from GPIOs to send
 
-        /*// Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-        float h = dht.readHumidity();
-        // Read temperature as Celsius (the default)
-        float t = dht.readTemperature();
-        // Check if any reads failed and exit early (to try again).
-        if (isnan(h) || isnan(t)) {
-          Serial.println("Failed to read from DHT sensor!");
-          strcpy(celsiusTemp,"Failed");
-          strcpy(humidityTemp, "Failed");
-        }
-        else{
-          // Computes temperature values in Celsius and Humidity
-          float hic = dht.computeHeatIndex(t, h, false);
-          dtostrf(hic, 6, 2, celsiusTemp);
-          dtostrf(h, 6, 2, humidityTemp);
-          // You can delete the following Serial.print's, it's just for debugging purposes
-          Serial.print("Humidity: ");
-          Serial.print(h);
-          Serial.print(" %\t Temperature: ");
-          Serial.print(t);
-          Serial.print(" *C ");
-          Serial.print(hic);
-          Serial.print(" *C ");
-          Serial.print("Humidity: ");
-          Serial.print(h);
-          Serial.print(" %\t Temperature: ");
-          Serial.print(t);
-          Serial.print(" *C ");
-          Serial.print("Heat index: ");
-          Serial.print(hic);
-          Serial.print(" *C ");
-        }*/
-
         // read the input on analog pin 0:
         int sensorValue = analogRead(A0);
         // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V):
-        int voltage = sensorValue * (5.0 / 1023.0);
+        int voltage = 1; //sensorValue * (5.0 / 1023.0);
         //voltage = (int) voltage * 1000;
         //voltage = voltage / 100;
         // print out the value you read:
         Serial.print("LDR: ");
         Serial.println(voltage);
 
-        String PostData = String(voltage);
+        //Creates the PostData Json with device current data
+        String PostData = "{\"ip\":\"" + localip + "\",\"time\":\"" + currtime + "\",\"name\":\"" + elektronname + "\",\"data\":\"" + data + "\"}"; 
 
         Serial.println("Sending data: " + PostData);
         Serial.println("API URL: " + apiurl);
 
-        //client.println("POST " + apiurl + PostData + " HTTP/1.1");
-        client.println("GET " + apiurl + PostData + " HTTP/1.1");
-        client.println("Host: jsonplaceholder.typicode.com");
+
+        client.println("POST " + apiurl + " HTTP/1.1");
+        client.println("Host: Elektron");
         client.println("Cache-Control: no-cache");
         client.println("Content-Type: application/x-www-form-urlencoded");
         client.print("Content-Length: ");
-        client.println(PostData.length());
+        client.println(PostData.length() + 2);
         client.println();
-        client.println();
+        client.println(PostData);
 
         long interval = 2000;
         unsigned long currentMillis = millis(), previousMillis = millis();
@@ -430,7 +403,7 @@ void func_post_data() {
         Serial.println(" ");
 
       }
-
+         
 }
 
 void func_configuration_mode() {
