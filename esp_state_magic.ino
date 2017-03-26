@@ -1,14 +1,6 @@
-#include <DHT.h>
-
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <EEPROM.h>
-
-#define DHTPIN 5
-
-#define DHTTYPE DHT11   // DHT 11
-
-DHT dht(DHTPIN, DHTTYPE);
 
 
 ESP8266WebServer server(80);
@@ -28,18 +20,61 @@ String esid;
 
 String apiurl;
 
-// Temporary variables
-static char celsiusTemp[7];
-static char humidityTemp[7];
+String localip = "elektronip";
+String elektronname = "Elektron";
+String currtime = "elektrontime";
+String data = "elektrondata";
 
+//Current Sensor ACS712 Variable Set
+#define C_SENSOR1 A0
+#define relay 2
+
+//For analog read
+int r1 = LOW;
+int r1_received = LOW;
+int incomingByte = 0;   // for incoming serial data
+int c_min = 0;
+int c_max = 30;
+
+//For analog read
+double value;
+
+//Constants to convert ADC divisions into mains current values.
+double ADCvoltsperdiv = 0.0048;
+double VDoffset = 2.4476; //Initial value (corrected as program runs)
+
+//Equation of the line calibration values
+double factorA = 15.35; //factorA = CT reduction factor / rsens
+double Ioffset = 0;
+
+//Constants set voltage waveform amplitude.
+double SetV = 217.0;
+
+//Counter
+int counter=0;
+
+int samplenumber = 4000;
+
+//Used for calculating real, apparent power, Irms and Vrms.
+double sumI=0.0;
+
+int sum1i=0;
+double sumVadc=0.0;
+
+double Vadc,Vsens,Isens,Imains,sqI,Irms;
+double apparentPower;
+
+int interrupt = 0;
+int wait = 5;
 
 void setup() {
   Serial.begin(115200);
 
+  pinMode(relay, OUTPUT);
+
+
   EEPROM.begin(512);
   delay(10);
-
-  dht.begin();
 
   Serial.println();
   Serial.println();
@@ -82,6 +117,7 @@ void setup() {
     }
   }
   //If not connects to AP set up its own, start web mode 1
+
   setupAP();
 }
 
@@ -110,7 +146,7 @@ void launchWeb(int webtype) {
   Serial.print("SoftAP IP: ");
   Serial.println(WiFi.softAPIP());
   IPAddress ip = WiFi.localIP();
-  String localip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
+  localip = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
   if (localip != "0.0.0.0") {
     Serial.println("Local IP is NOT 0.0.0.0 so show main page: web mode 0 (connecting to configured SSID AP and start web server)");
     createWebServer(0);
@@ -268,6 +304,10 @@ void createWebServer(int webtype)
     Serial.println("CONNECTED TO SSID: ");
     Serial.println(connected_ssid);
 
+    //Here its starts to send Post Data to server:
+    func_post_data();
+    //func_test_relay();
+
     server.on("/", []() {
       IPAddress ip = WiFi.localIP();
       String ipStr = String(ip[0]) + '.' + String(ip[1]) + '.' + String(ip[2]) + '.' + String(ip[3]);
@@ -290,8 +330,53 @@ void createWebServer(int webtype)
       func_disconnect();
 
     });
-  }
+
+    /*server.on("/off", []() {
+
+    interrupt = 1;
+    Serial.println("Sending Relay Off");
+    func_relay_off();
+
+    });
+
+
+    server.on("/on", []() {
+
+    interrupt = 1;
+    Serial.println("Sending Relay On");
+    func_relay_on();
+
+    });*/
+
+    }
 }
+
+void func_relay_on() {
+   //Turn On the realy at D0 pin
+   Serial.println("Relay On");
+   digitalWrite(relay, LOW); // turn the relay on to start
+   interrupt = 0;
+
+}
+
+void func_relay_off() {
+   //Turn Off the realy at 2 pin
+   Serial.println("Relay Off");
+   digitalWrite(relay, HIGH); // turn the relay off to start
+   interrupt = 0;
+
+}
+
+void func_test_relay() {
+   //Turn On the realy at D0 pin
+   Serial.println("Relay OFF");
+   digitalWrite(relay, LOW); // turn the relay off to start
+   delay(3000);
+   Serial.println("Relay On");
+   digitalWrite(relay, HIGH); // turn the relay off to start
+   delay(3000);
+}
+
 
 void func_disconnect() {
       //Disconnect from configured SSID AP and setup owns AP again web mode 1
@@ -321,10 +406,21 @@ void func_cleareeprom() {
 void func_post_data() {
       //Start sending data to configured server
       Serial.println("Sending data to server ...");
-      const uint16_t port = 80;
-      char host[80];
+      const uint16_t port = 9292; //sinatra app port
+      char host[90];
+
+      if (wait < 1){
+        Serial.println("Wait for Relay = 0: Preparing to send");
+        interrupt = 0;
+        delay(1000);
+        wait = 5;
+      }
+
+      wait = wait -1;
+
       equrl.toCharArray(host, port);
-      apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id=";
+      //apiurl = "/uraqi/web/app_dev.php/api/uraqis.json?post_id="; //simfony 2 rest app url
+      apiurl = "/elektronsends"; //sinatra app url
 
       WiFiClient client; // Use WiFI Client to create TCP connections
 
@@ -338,69 +434,56 @@ void func_post_data() {
 
 
 
-      while (client.connect(host, port)) {
+      while (client.connect(host, port) && (interrupt == 0)) {
 
         delay(5000);
 
         //retrieving data from GPIOs to send
 
-        /*// Sensor readings may also be up to 2 seconds 'old' (its a very slow sensor)
-        float h = dht.readHumidity();
-        // Read temperature as Celsius (the default)
-        float t = dht.readTemperature();
-        // Check if any reads failed and exit early (to try again).
-        if (isnan(h) || isnan(t)) {
-          Serial.println("Failed to read from DHT sensor!");
-          strcpy(celsiusTemp,"Failed");
-          strcpy(humidityTemp, "Failed");
-        }
-        else{
-          // Computes temperature values in Celsius and Humidity
-          float hic = dht.computeHeatIndex(t, h, false);
-          dtostrf(hic, 6, 2, celsiusTemp);
-          dtostrf(h, 6, 2, humidityTemp);
-          // You can delete the following Serial.print's, it's just for debugging purposes
-          Serial.print("Humidity: ");
-          Serial.print(h);
-          Serial.print(" %\t Temperature: ");
-          Serial.print(t);
-          Serial.print(" *C ");
-          Serial.print(hic);
-          Serial.print(" *C ");
-          Serial.print("Humidity: ");
-          Serial.print(h);
-          Serial.print(" %\t Temperature: ");
-          Serial.print(t);
-          Serial.print(" *C ");
-          Serial.print("Heat index: ");
-          Serial.print(hic);
-          Serial.print(" *C ");
-        }*/
-
         // read the input on analog pin 0:
-        int sensorValue = analogRead(A0);
+        //int sensorValue = analogRead(A0);
         // Convert the analog reading (which goes from 0 - 1023) to a voltage (0 - 5V):
-        int voltage = sensorValue * (5.0 / 1023.0);
+        //int voltage = sensorValue; //sensorValue * (5.0 / 1023.0);
         //voltage = (int) voltage * 1000;
         //voltage = voltage / 100;
-        // print out the value you read:
-        Serial.print("LDR: ");
-        Serial.println(voltage);
 
-        String PostData = String(voltage);
+
+        server.on("/off", []() {
+
+        Serial.println("Sending Relay Off");
+        func_relay_off();
+
+        });
+
+
+        server.on("/on", []() {
+
+        Serial.println("Sending Relay On");
+        func_relay_on();
+
+
+        });
+
+        // print out the value you read:
+        Serial.print("ACS712: ");
+        //Serial.println(voltage);
+        func_read_current_sensor();
+
+        //Creates the PostData Json with device current data
+        String PostData = "{\"ip\":\"" + localip + "\",\"time\":\"" + currtime + "\",\"name\":\"" + elektronname + "\",\"data\":\"" + apparentPower + "\"}";
 
         Serial.println("Sending data: " + PostData);
         Serial.println("API URL: " + apiurl);
 
 
-        client.println("POST " + apiurl + PostData + " HTTP/1.1");
-        client.println("Host: jsonplaceholder.typicode.com");
+        client.println("POST " + apiurl + " HTTP/1.1");
+        client.println("Host: Elektron");
         client.println("Cache-Control: no-cache");
         client.println("Content-Type: application/x-www-form-urlencoded");
         client.print("Content-Length: ");
-        client.println(PostData.length());
+        client.println(PostData.length() + 2);
         client.println();
-        client.println();
+        client.println(PostData);
 
         long interval = 2000;
         unsigned long currentMillis = millis(), previousMillis = millis();
@@ -428,7 +511,10 @@ void func_post_data() {
         }
         Serial.println(" ");
 
+        interrupt = 1;
       }
+
+
 
 }
 
@@ -447,6 +533,65 @@ void func_configuration_mode() {
       server.send(200, "text/html", content);
       content = "";
       return;
+}
+
+void func_read_current_sensor() {
+  Serial.println("func_read_current_sensor");
+
+  value = analogRead(C_SENSOR1);
+
+  //Summing counter
+  counter++;
+
+  //Voltage at ADC
+  Vadc = value * ADCvoltsperdiv;
+
+  //Remove voltage divider offset
+  Vsens = Vadc-VDoffset;
+
+  //Current transformer scale to find Imains
+  Imains = Vsens;
+
+  //Calculates Voltage divider offset.
+  sum1i++; sumVadc = sumVadc + Vadc;
+  if (sum1i>=1000) {VDoffset = sumVadc/sum1i; sum1i = 0; sumVadc=0.0;}
+
+  //Root-mean-square method current
+  //1) square current values
+  sqI = Imains*Imains;
+  //2) sum
+  sumI=sumI+sqI;
+
+  Serial.println("Reading ACS712 Current Sensor");
+  counter=0;
+  //Calculation of the root of the mean of the current squared (rms)
+  Irms = factorA*sqrt(sumI/samplenumber)+Ioffset;
+  if (Irms<0.05) {Irms=0;}
+
+  //Calculation of the root of the mean of the voltage squared (rms)
+
+
+  /*if (Irms < c_min || Irms > c_max) {
+    digitalWrite(RELAY1, HIGH);
+    r1 = 0;
+  }*/
+
+  apparentPower = Irms * SetV;
+  Serial.println("Watios: ");
+  Serial.println(apparentPower);
+  Serial.println("Voltaje: ");
+  Serial.println(SetV);
+  Serial.println("Amperios: ");
+  Serial.println(Irms);
+  Serial.println("status: ");
+  Serial.println(r1);
+  Serial.println("c_max: ");
+  Serial.println(c_max);
+  Serial.println();
+
+  //Reset values ready for next sample.
+  sumI=0.0;
+
 }
 
 void loop() {
